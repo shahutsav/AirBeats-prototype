@@ -31,39 +31,40 @@ int midiInstr=1;
 
 SoftwareSerial VS1053_MIDI(0, 2); 
 
-int irqpin = 3;  // Digital 3 
+int irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
 boolean touchStates[12]; //to keep track of the 12 previous touch states
 
 //////////////////////////////////////////////////////////////////////SETUP
 void setup() {
 	Serial.begin(9600);
 	Serial.println("VS1053+MPR121 MIDI test");
-	pinMode(irqpin, INPUT);
-	pinMode(VS1053_RESET, OUTPUT);
+	pinMode(irqpin, INPUT);//enable Pin:3
+	pinMode(VS1053_RESET, OUTPUT);//
 	digitalWrite(irqpin, HIGH); //enable pullup resistor
-
 	digitalWrite(VS1053_RESET, LOW);
   	delay(10);
   	digitalWrite(VS1053_RESET, HIGH);
   	delay(10);//reset the VS1053
 
   	Wire.begin();
-  	mpr121_setup();
+  	mpr121_setup();//a function down below to set default values for MPR121
 
   	VS1053_MIDI.begin(31250); // MIDI uses a 'strange baud rate'
-  	midiSetChannelBank(0, VS1053_BANK_MELODY);
-  	midiSetInstrument(0, midiInstr);
-  	midiSetChannelVolume(0, 63);
+  	midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79
+  	midiSetInstrument(0, midiInstr);// 0x C0 01
+  	midiSetChannelVolume(0, 63);//0x B0 07 3F
 }
 ///////////////////////////////////////////////////////////////////////LOOP
 void loop() {  
 	readTouchInputs();
-  	/*for (uint8_t i=60; i<69; i++) { //i is the note
-    	midiNoteOn(0, i, 127);
-    	delay(100);
-    	midiNoteOff(0, i, 127);
-  	}*/
-   	readResistorInputs();
+  readResistorInputs();
+
+
+  //readInputs()
+
+  //writeOutputs()
+
+  //recordMusic()
 }
 
 
@@ -81,9 +82,6 @@ void readResistorInputs(){
   		}
 	}
 }
-
-
-  
 
 void midiSetInstrument(uint8_t chan, uint8_t inst) {
   if (chan > 15) return;
