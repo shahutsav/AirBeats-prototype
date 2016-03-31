@@ -1,6 +1,6 @@
 /*
 Pin uesage list
-#  use
+#   USE
 2   Serial to 1053
 9   Reset 1053
 A0  Tone changing
@@ -28,7 +28,7 @@ A0  Tone changing
 int analogPin=A0;
 int a0Input=0;
 int midiInstr=1;
-
+int noteMapping[7]={60,62,64,65,67,69,71};
 SoftwareSerial VS1053_MIDI(0, 2); 
 
 int irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
@@ -38,7 +38,7 @@ boolean touchStates[12]; //to keep track of the 12 previous touch states
 void setup() {
 	Serial.begin(9600);
 	Serial.println("VS1053+MPR121 MIDI test");
-	pinMode(irqpin, INPUT);//enable Pin:3
+	pinMode(irqpin, INPUT);//enable Pin:3 for MPR121
 	pinMode(VS1053_RESET, OUTPUT);//
 	digitalWrite(irqpin, HIGH); //enable pullup resistor
 	digitalWrite(VS1053_RESET, LOW);
@@ -49,15 +49,20 @@ void setup() {
   	Wire.begin();
   	mpr121_setup();//a function down below to set default values for MPR121
 
-  	VS1053_MIDI.begin(31250); // MIDI uses a 'strange baud rate'
-  	midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79
-  	midiSetInstrument(0, midiInstr);// 0x C0 01
-  	midiSetChannelVolume(0, 63);//0x B0 07 3F
+  	VS1053_MIDI.begin(31250); // 3906 byte/second
+  	midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
+    midiSetInstrument(0, midiInstr);// 0x C0 01
+    midiSetChannelVolume(0, 63);//0x B0 07 3F
+
+    midiSetChannelBank(1, VS1053_BANK_DRUMS2);
+    midiSetInstrument(1, 36);
+    midiSetChannelVolume(0,50);
 }
 ///////////////////////////////////////////////////////////////////////LOOP
-void loop() {  
+void loop() { 
+  //unsigned long currentTime = millis();
 	readTouchInputs();
-  readResistorInputs();
+  //readResistorInputs();
 
 
   //readInputs()
@@ -69,10 +74,60 @@ void loop() {
 
 
 ////////////////////////////////////////////////////////////////////FUNCTIONS
+void readTouchInputs(){
+  if(!checkInterrupt()){
+    
+    //read the touch state from the MPR121
+    Wire.requestFrom(0x5A,2); 
+    
+    byte LSB = Wire.read();
+    byte MSB = Wire.read();
+    
+    uint16_t touched = ((MSB << 8) | LSB); //16bits that make up the touch states
+
+    
+    for (int i=0; i < 12; i++){  // Check what electrodes were pressed
+      if(touched & (1<<i)){
+      
+        if(touchStates[i] == 0){
+          //pin i was just touched
+            Serial.print("pin ");
+            Serial.print(i);
+            Serial.println(" was just touched");
+            if(i==7){
+            	midiNoteOn(1, 83,127);
+            }
+          	else {midiNoteOn(0, noteMapping[i], 127);}
+        }else if(touchStates[i] == 1){
+          //pin i is still being touched
+        }  
+      
+        touchStates[i] = 1;// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<should use this 
+
+      }else{
+        if(touchStates[i] == 1){
+          Serial.print("pin ");
+          Serial.print(i);
+          Serial.println(" is no longer being touched");
+            if(i==7){
+              //you dont have to turn a drum off
+            }
+          	else {midiNoteOff(0, noteMapping[i], 127);}
+          //pin i is no longer being touched
+       }
+        
+        touchStates[i] = 0;
+      }
+    
+    }
+    
+  }
+}
+
 void readResistorInputs(){
-  	a0Input=analogRead(analogPin)/8;
+  	a0Input=analogRead(analogPin)/16;
   	
-  	if(midiInstr != a0Input;){
+  	if(midiInstr != a0Input){
   		if (a0Input>0 && a0Input<129){
     		midiSetInstrument(0, a0Input);
     		Serial.println(" current instrument"+String(a0Input));
@@ -208,48 +263,7 @@ void mpr121_setup(void){
   
 }
 
-void readTouchInputs(){
-  if(!checkInterrupt()){
-    
-    //read the touch state from the MPR121
-    Wire.requestFrom(0x5A,2); 
-    
-    byte LSB = Wire.read();
-    byte MSB = Wire.read();
-    
-    uint16_t touched = ((MSB << 8) | LSB); //16bits that make up the touch states
 
-    
-    for (int i=0; i < 12; i++){  // Check what electrodes were pressed
-      if(touched & (1<<i)){
-      
-        if(touchStates[i] == 0){
-          //pin i was just touched
-          	Serial.print("pin ");
-          	Serial.print(i);
-          	Serial.println(" was just touched");
-        	midiNoteOn(0, i+59, 127);
-        }else if(touchStates[i] == 1){
-          //pin i is still being touched
-        }  
-      
-        touchStates[i] = 1;      
-      }else{
-        if(touchStates[i] == 1){
-          Serial.print("pin ");
-          Serial.print(i);
-          Serial.println(" is no longer being touched");
-          midiNoteOff(0, i+59, 127);
-          //pin i is no longer being touched
-       }
-        
-        touchStates[i] = 0;
-      }
-    
-    }
-    
-  }
-}
 
 boolean checkInterrupt(void){
   return digitalRead(irqpin);
