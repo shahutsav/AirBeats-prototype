@@ -1,17 +1,25 @@
 /*
-Pin uesage list
-#   USE
-2   Serial to 1053
-9   Reset 1053
-A0  Tone changing
+AirBeats Project Code for Arduino Uno
+V 0.2 
 
+Last edit: Yebai Zhao
+--------------------
+Pin uesage list. 
+Even you don't see a wire coming out of a pin doesn't mean it is not used.
+[#] [USEAGE]
+D2  Serial to 1053
+D3  IRQ to MPR121
+D9  Reset 1053
+
+A4  SDA to MPR121
+A5  SCL to MPR121
 */
 #include "mpr121.h"
 #include <Wire.h>
 #include <SoftwareSerial.h>
-// define the pins used
+
 #define VS1053_RX  2 // This is the pin that connects to the RX pin on VS1053
-#define VS1053_RESET 9 // This is the pin that connects to the RESET pin on VS1053
+// #define VS1053_RESET 9 // This is the pin that connects to the RESET pin on VS1053
 
 #define VS1053_BANK_DEFAULT 0x00
 #define VS1053_BANK_DRUMS1 0x78
@@ -24,118 +32,92 @@ A0  Tone changing
 #define MIDI_CHAN_BANK 0x00
 #define MIDI_CHAN_VOLUME 0x07
 #define MIDI_CHAN_PROGRAM 0xC0
+#define BPM 120 //Beats per minute, should be 120/60/40/30... etc
 
-int analogPin=A0;
-int a0Input=0;
-int midiInstr=1;
-int noteMapping[7]={60,62,64,65,67,69,71};
+//int analogPin=A0;
+uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note. In milisecond
+uint16_t barInterval= 4*(2*minTimeInterval); //in a 4/4 beat, this is the time for a bar
+
+
+int8_t midiInstr=28;// electric guitar
+int8_t noteMapping[14]={60,62,64,65,67,69,71,72,74,76,77,79,81,83};
 SoftwareSerial VS1053_MIDI(0, 2); 
 
-int irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
-boolean touchStates[12]; //to keep track of the 12 previous touch states
+int8_t irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
+boolean touchStates[12]; //to keep track of the 12 touch states
+boolean lastTouchStates[12];// Previous touch states
 
 //////////////////////////////////////////////////////////////////////SETUP
 void setup() {
 	Serial.begin(9600);
-	Serial.println("VS1053+MPR121 MIDI test");
+	Serial.println("VS1053+MPR121 AirBeats v0.2");
 	pinMode(irqpin, INPUT);//enable Pin:3 for MPR121
-	pinMode(VS1053_RESET, OUTPUT);//
 	digitalWrite(irqpin, HIGH); //enable pullup resistor
-	digitalWrite(VS1053_RESET, LOW);
-  	delay(10);
-  	digitalWrite(VS1053_RESET, HIGH);
-  	delay(10);//reset the VS1053
-
   	Wire.begin();
   	mpr121_setup();//a function down below to set default values for MPR121
 
   	VS1053_MIDI.begin(31250); // 3906 byte/second
   	midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
     midiSetInstrument(0, midiInstr);// 0x C0 01
-    midiSetChannelVolume(0, 63);//0x B0 07 3F
+    midiSetChannelVolume(0, 50);//0x B0 07 3F
 
-    midiSetChannelBank(1, VS1053_BANK_DRUMS2);
-    midiSetInstrument(1, 36);
-    midiSetChannelVolume(0,50);
+    midiSetChannelBank(1, VS1053_BANK_DRUMS2);// channel 1 is using drum2 bank
+    midiSetChannelVolume(1,63);
+    
 }
 ///////////////////////////////////////////////////////////////////////LOOP
 void loop() { 
   //unsigned long currentTime = millis();
 	readTouchInputs();
-  //readResistorInputs();
+ 
+  writeOutputs();
 
-
-  //readInputs()
-
-  //writeOutputs()
-
-  //recordMusic()
+  recordMusic();
 }
 
 
 ////////////////////////////////////////////////////////////////////FUNCTIONS
 void readTouchInputs(){
   if(!checkInterrupt()){
+    Wire.requestFrom(0x5A,2); //read the touch state from the MPR121
     
-    //read the touch state from the MPR121
-    Wire.requestFrom(0x5A,2); 
+    byte LSB = Wire.read(); //0000 0000
+    byte MSB = Wire.read(); //0000 0000
     
-    byte LSB = Wire.read();
-    byte MSB = Wire.read();
-    
-    uint16_t touched = ((MSB << 8) | LSB); //16bits that make up the touch states
+    uint16_t touched = ((MSB << 8) | LSB); //16bits that make up the touch states 
 
-    
     for (int i=0; i < 12; i++){  // Check what electrodes were pressed
       if(touched & (1<<i)){
-      
-        if(touchStates[i] == 0){
-          //pin i was just touched
-            Serial.print("pin ");
-            Serial.print(i);
-            Serial.println(" was just touched");
-            if(i==7){
-            	midiNoteOn(1, 83,127);
-            }
-          	else {midiNoteOn(0, noteMapping[i], 127);}
-        }else if(touchStates[i] == 1){
-          //pin i is still being touched
-        }  
-      
-        touchStates[i] = 1;// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<should use this 
-
+        touchStates[i] = 1;// in this time the i pin is activated 
       }else{
-        if(touchStates[i] == 1){
-          Serial.print("pin ");
-          Serial.print(i);
-          Serial.println(" is no longer being touched");
-            if(i==7){
-              //you dont have to turn a drum off
-            }
-          	else {midiNoteOff(0, noteMapping[i], 127);}
-          //pin i is no longer being touched
-       }
-        
-        touchStates[i] = 0;
+        touchStates[i] = 0;// not activiated
       }
-    
     }
-    
+
   }
 }
 
-void readResistorInputs(){
-  	a0Input=analogRead(analogPin)/16;
-  	
-  	if(midiInstr != a0Input){
-  		if (a0Input>0 && a0Input<129){
-    		midiSetInstrument(0, a0Input);
-    		Serial.println(" current instrument"+String(a0Input));
-    		midiInstr = a0Input;
-  		}else{
-  			Serial.println("instrument selection wrong");
-  		}
-	}
+void writeOutputs(){
+  for(int i=0; i<12; i++){
+    if(lastTouchStates[i]== 0 && touchStates[i]==1){
+      midiNoteOn(0, noteMapping[i], 127);
+    }
+    else if(lastTouchStates[i]==1 && touchStates[i]==0){
+      midiNoteOff(0, noteMapping[i], 127);
+    }
+  }
+  if(millis() % barInterval == 0){
+    midiNoteOn(1, 82, 90);// play the shaker 82, in a vel of 90
+  }
+}
+
+void recordMusic(){
+  // if(millis() % minTimeInterval ==0){
+
+  // }
+  for(int i=0; i<12; i++){ //update the touch status array
+    lastTouchStates[i]=touchStates[i];
+  }
 }
 
 void midiSetInstrument(uint8_t chan, uint8_t inst) {
