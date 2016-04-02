@@ -1,6 +1,6 @@
 /*
 AirBeats Project Code for Arduino Uno
-V 0.2 
+V 0.3
 
 Last edit: Yebai Zhao
 --------------------
@@ -10,6 +10,7 @@ Even you don't see a wire coming out of a pin doesn't mean it is not used.
 D2  Serial to 1053
 D3  IRQ to MPR121
 D9  Reset 1053
+D4  SD card reset
 
 A4  SDA to MPR121
 A5  SCL to MPR121
@@ -21,49 +22,48 @@ A5  SCL to MPR121
 #include <SD.h>
 
 #define VS1053_RX  2 // This is the pin that connects to the RX pin on VS1053
-// #define VS1053_RESET 9 // This is the pin that connects to the RESET pin on VS1053
 #define CARDCS 4     // Card chip select pin
+
+//MIDI Message settings
 #define VS1053_BANK_DEFAULT 0x00
 #define VS1053_BANK_DRUMS1 0x78
 #define VS1053_BANK_DRUMS2 0x7F
 #define VS1053_BANK_MELODY 0x79
-
 #define MIDI_NOTE_ON  0x90
 #define MIDI_NOTE_OFF 0x80
 #define MIDI_CHAN_MSG 0xB0
 #define MIDI_CHAN_BANK 0x00
 #define MIDI_CHAN_VOLUME 0x07
 #define MIDI_CHAN_PROGRAM 0xC0
-#define BPM 60 //Beats per minute, should be 120/60/40/30... etc
+SoftwareSerial VS1053_MIDI(0, VS1053_RX); 
+int8_t midiInstr=26;// electric guitar
 
-//int analogPin=A0;
+//Basic pace settings
 uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note. In milisecond
 uint16_t barInterval= 4*(2*minTimeInterval); //in a 4/4 beat, this is the time for a bar
 unsigned long lastBarTime;
 unsigned long recordBarTime;
-uint16_t touched;
+#define BPM 60 //Beats per minute, should be 120/60/40/30... etc
 
-int8_t midiInstr=26;// electric guitar
+
+//MPR121 sensor settings
+#define irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
 int8_t noteMapping[14]={60,62,64,65,67,69,71,72,74,76,77,79,81,83};
-SoftwareSerial VS1053_MIDI(0, 2); 
-
-int8_t irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
-
+uint16_t touched;
 int8_t noteActionStates[12];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
-
+//SD card
 File myFile;
 
 //////////////////////////////////////////////////////////////////////SETUP
 void setup() {
 	Serial.begin(9600);
-	//Serial.println("VS1053+MPR121 AirBeats v0.2");
+	Serial.println("VS1053+MPR121 AirBeats v0.2");
 
-  if (!SD.begin(CARDCS)) {
+  if (!SD.begin(CARDCS)) { //if there is no sd card
     Serial.println(("SD failed, or not present"));
     while (1);  // don't do anything more
-  }
-  else if (SD.exists("MIDI.txt")){
-    SD.remove("MIDI.txt");
+  }else if (SD.exists("MIDI.txt")){
+    SD.remove("MIDI.txt"); //delete the old file
   }
   myFile = SD.open("MIDI.txt", FILE_WRITE);
   myFile.close();
@@ -134,6 +134,7 @@ void fileIO(){
     for(int i=0; i<7; i++){
       if(noteActionStates[i] == 1){
         myFile.println(char(i)+", "+char(millis()-recordBarTime));
+        myFile.flush();
       }
     }
 
