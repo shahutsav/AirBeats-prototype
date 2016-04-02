@@ -17,10 +17,12 @@ A5  SCL to MPR121
 #include "mpr121.h"
 #include <Wire.h>
 #include <SoftwareSerial.h>
+#include <SPI.h>
+#include <SD.h>
 
 #define VS1053_RX  2 // This is the pin that connects to the RX pin on VS1053
 // #define VS1053_RESET 9 // This is the pin that connects to the RESET pin on VS1053
-
+#define CARDCS 4     // Card chip select pin
 #define VS1053_BANK_DEFAULT 0x00
 #define VS1053_BANK_DRUMS1 0x78
 #define VS1053_BANK_DRUMS2 0x7F
@@ -32,92 +34,129 @@ A5  SCL to MPR121
 #define MIDI_CHAN_BANK 0x00
 #define MIDI_CHAN_VOLUME 0x07
 #define MIDI_CHAN_PROGRAM 0xC0
-#define BPM 120 //Beats per minute, should be 120/60/40/30... etc
+#define BPM 60 //Beats per minute, should be 120/60/40/30... etc
 
 //int analogPin=A0;
 uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note. In milisecond
 uint16_t barInterval= 4*(2*minTimeInterval); //in a 4/4 beat, this is the time for a bar
+unsigned long lastBarTime;
+unsigned long recordBarTime;
+uint16_t touched;
 
-
-int8_t midiInstr=28;// electric guitar
+int8_t midiInstr=26;// electric guitar
 int8_t noteMapping[14]={60,62,64,65,67,69,71,72,74,76,77,79,81,83};
 SoftwareSerial VS1053_MIDI(0, 2); 
 
 int8_t irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
-boolean touchStates[12]; //to keep track of the 12 touch states
-boolean lastTouchStates[12];// Previous touch states
+
+int8_t noteActionStates[12];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
+
+File myFile;
 
 //////////////////////////////////////////////////////////////////////SETUP
 void setup() {
 	Serial.begin(9600);
-	Serial.println("VS1053+MPR121 AirBeats v0.2");
+	//Serial.println("VS1053+MPR121 AirBeats v0.2");
+
+  if (!SD.begin(CARDCS)) {
+    Serial.println(("SD failed, or not present"));
+    while (1);  // don't do anything more
+  }
+  else if (SD.exists("MIDI.txt")){
+    SD.remove("MIDI.txt");
+  }
+  myFile = SD.open("MIDI.txt", FILE_WRITE);
+  myFile.close();
+
 	pinMode(irqpin, INPUT);//enable Pin:3 for MPR121
 	digitalWrite(irqpin, HIGH); //enable pullup resistor
-  	Wire.begin();
-  	mpr121_setup();//a function down below to set default values for MPR121
+  Wire.begin();
+  mpr121_setup();//a function down below to set default values for MPR121
+  
+  
+  VS1053_MIDI.begin(31250); // 3906 byte/second
+  midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
+  midiSetInstrument(0, midiInstr);// 0x C0 01
+  midiSetChannelVolume(0, 127);//0x B0 07 3F
 
-  	VS1053_MIDI.begin(31250); // 3906 byte/second
-  	midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
-    midiSetInstrument(0, midiInstr);// 0x C0 01
-    midiSetChannelVolume(0, 50);//0x B0 07 3F
-
-    midiSetChannelBank(1, VS1053_BANK_DRUMS2);// channel 1 is using drum2 bank
-    midiSetChannelVolume(1,63);
-    
+  midiSetChannelBank(9, VS1053_BANK_DRUMS2);// channel 9 is using drum2 bank
+  midiSetChannelVolume(9,127);
 }
 ///////////////////////////////////////////////////////////////////////LOOP
 void loop() { 
   //unsigned long currentTime = millis();
 	readTouchInputs();
- 
+  fileIO();
   writeOutputs();
-
-  recordMusic();
 }
 
 
 ////////////////////////////////////////////////////////////////////FUNCTIONS
-void readTouchInputs(){
+void readTouchInputs(){ // Read input, write action arry
+  
   if(!checkInterrupt()){
     Wire.requestFrom(0x5A,2); //read the touch state from the MPR121
     
     byte LSB = Wire.read(); //0000 0000
     byte MSB = Wire.read(); //0000 0000
     
-    uint16_t touched = ((MSB << 8) | LSB); //16bits that make up the touch states 
+    touched = ((MSB << 8) | LSB); //16bits that make up the touch states 
 
-    for (int i=0; i < 12; i++){  // Check what electrodes were pressed
-      if(touched & (1<<i)){
-        touchStates[i] = 1;// in this time the i pin is activated 
-      }else{
-        touchStates[i] = 0;// not activiated
+  }
+
+  for (int i=0; i < 12; i++){  // Check what electrodes were pressed
+
+    if(touched & (1<<i)){
+      if(noteActionStates[i] == 0){
+        noteActionStates[i] = 1;
+      }else if(noteActionStates[i] == 1){
+        noteActionStates[i] = 2;
+      }
+    }
+    else{
+      if(noteActionStates[i] == 2){
+        noteActionStates[i] = 3;
+      }else if(noteActionStates[i] == 3){
+        noteActionStates[i] = 0;
       }
     }
 
+    }
+}
+
+void fileIO(){
+  if(noteActionStates[7]==1){
+    unsigned long recordBarTime=lastBarTime;
+    myFile = SD.open("MIDI.txt", FILE_WRITE);
   }
+  else if(noteActionStates[7]==2){
+
+    for(int i=0; i<7; i++){
+      if(noteActionStates[i] == 1){
+        myFile.println(char(i)+", "+char(millis()-recordBarTime));
+      }
+    }
+
+  }else if(noteActionStates[7]==3){
+    myFile.close();
+  }
+
 }
 
 void writeOutputs(){
-  for(int i=0; i<12; i++){
-    if(lastTouchStates[i]== 0 && touchStates[i]==1){
-      midiNoteOn(0, noteMapping[i], 127);
-    }
-    else if(lastTouchStates[i]==1 && touchStates[i]==0){
+  for(int i=0; i<7; i++){
+    if(noteActionStates[i]==1){//notes,
+      midiNoteOn(0, noteMapping[i], 127);  
+    }else if(noteActionStates[i]==3){
       midiNoteOff(0, noteMapping[i], 127);
     }
   }
-  if(millis() % barInterval == 0){
-    midiNoteOn(1, 82, 90);// play the shaker 82, in a vel of 90
-  }
-}
 
-void recordMusic(){
-  // if(millis() % minTimeInterval ==0){
-
-  // }
-  for(int i=0; i<12; i++){ //update the touch status array
-    lastTouchStates[i]=touchStates[i];
+  if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
+    lastBarTime=millis();
+    midiNoteOn(9, 36, 127);
   }
+
 }
 
 void midiSetInstrument(uint8_t chan, uint8_t inst) {
