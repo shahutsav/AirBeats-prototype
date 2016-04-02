@@ -39,15 +39,16 @@ SoftwareSerial VS1053_MIDI(0, VS1053_RX);
 int8_t midiInstr=26;// electric guitar
 
 //Basic pace settings
+#define BPM 60 //Beats per minute, should be 120/60/40/30... etc
 uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note. In milisecond
 uint16_t barInterval= 4*(2*minTimeInterval); //in a 4/4 beat, this is the time for a bar
 unsigned long lastBarTime;
 unsigned long recordBarTime;
-#define BPM 60 //Beats per minute, should be 120/60/40/30... etc
+
 
 
 //MPR121 sensor settings
-#define irqpin = 3;  //Pin Digital 3 is used for MPR121 interrupt
+#define irqpin 3  //Pin Digital 3 is used for MPR121 interrupt
 int8_t noteMapping[14]={60,62,64,65,67,69,71,72,74,76,77,79,81,83};
 uint16_t touched;
 int8_t noteActionStates[12];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
@@ -133,7 +134,8 @@ void fileIO(){
 
     for(int i=0; i<7; i++){
       if(noteActionStates[i] == 1){
-        myFile.println(char(i)+", "+char(millis()-recordBarTime));
+        String newline=String(i)+", "+String(millis()-recordBarTime);
+        myFile.println(newline);
         myFile.flush();
       }
     }
