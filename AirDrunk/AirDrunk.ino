@@ -1,5 +1,6 @@
 /*
 AirBeats Project Code for Arduino Uno
+
 V 0.3.4
 
 Last edit: Yebai Zhao
@@ -44,6 +45,7 @@ uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note
 uint16_t barInterval= 4*(2*minTimeInterval); //in a 4/4 beat, this is the time for a bar
 unsigned long lastBarTime;
 unsigned long recordBarTime;
+
 unsigned long nextBarTime;
 
 //MPR121 sensor settings
@@ -120,8 +122,7 @@ void readTouchInputs(){ // Read input, write action arry
         noteActionStates[i] = 0;
       }
     }
-
-    }
+  }
 }
 
 void fileIO(){
@@ -238,7 +239,6 @@ void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
   VS1053_MIDI.write(vel);
 }
 
-
 void mpr121_setup(void){
 
   set_register(0x5A, ELE_CFG, 0x00); 
@@ -313,12 +313,9 @@ void mpr121_setup(void){
   
 }
 
-
-
 boolean checkInterrupt(void){
   return digitalRead(irqpin);
 }
-
 
 void set_register(int address, unsigned char r, unsigned char v){
     Wire.beginTransmission(address);
