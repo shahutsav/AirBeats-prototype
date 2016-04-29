@@ -1,7 +1,7 @@
 /*
 AirBeats Project Code for Arduino Uno
 
-V 0.3.4
+V 0.4.2
 
 Last edit: Yebai Zhao
 --------------------
@@ -50,9 +50,9 @@ unsigned long nextBarTime;
 
 //MPR121 sensor settings
 #define irqpin 3  //Pin Digital 3 is used for MPR121 interrupt
-int8_t noteMapping[14]={60,62,64,65,67,69,71,72,74,76,77,79,81,83};
+int8_t noteMapping[16]={60,62,64,65,67,69,71,72,74,76,77,79,40,46,48,56};
 uint16_t touched;
-int8_t noteActionStates[12];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
+int8_t noteActionStates[16];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
 //SD card
 File myFile;
 
@@ -75,7 +75,14 @@ void setup() {
   Wire.begin();
   mpr121_setup();//a function down below to set default values for MPR121
   
-  
+  ////////////////////glove
+  pinMode(8, INPUT);
+  pinMode(9, INPUT);
+  pinMode(10, INPUT);
+  pinMode(11, INPUT);
+
+  ///////////////////
+
   VS1053_MIDI.begin(31250); // 3906 byte/second
   midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
   midiSetInstrument(0, midiInstr);// 0x C0 01
@@ -88,7 +95,7 @@ void setup() {
 void loop() { 
   //unsigned long currentTime = millis();
 	readTouchInputs();
-  fileIO();
+  //fileIO();
   writeOutputs();
 }
 
@@ -101,12 +108,16 @@ void readTouchInputs(){ // Read input, write action arry
     
     byte LSB = Wire.read(); //0000 0000
     byte MSB = Wire.read(); //0000 0000
-    
     touched = ((MSB << 8) | LSB); //16bits that make up the touch states 
-
   }
 
-  for (int i=0; i < 12; i++){  // Check what electrodes were pressed
+    byte glove =(digitalRead(11)<<3)|(digitalRead(10)<<2)|(digitalRead(9)<<1)|(digitalRead(8));
+    touched=( (glove<<12) |touched);
+
+
+
+    
+  for (int i=0; i < 16; i++){  // Check what electrodes were pressed
 
     if(touched & (1<<i)){
       if(noteActionStates[i] == 0){
@@ -125,67 +136,77 @@ void readTouchInputs(){ // Read input, write action arry
   }
 }
 
-void fileIO(){
-  if(noteActionStates[7]==1){ //start recording
-    unsigned long recordBarTime=lastBarTime;
-    myFile = SD.open("MIDI.txt", FILE_WRITE);
-  }
-  else if(noteActionStates[7]==2){ //recoding
+// void fileIO(){
+//   if(noteActionStates[7]==1){ //start recording
+//     unsigned long recordBarTime=lastBarTime;
+//     myFile = SD.open("MIDI.txt", FILE_WRITE);
+//   }
+//   else if(noteActionStates[7]==2){ //recoding
 
-    for(int i=0; i<7; i++){
-      if(noteActionStates[i] == 1){
-        String newline=String(i)+"O"+String(millis()-recordBarTime);
-        myFile.println(newline);
-        myFile.flush();
-      }else if (noteActionStates[i] == 3){
-        String newline=String(i)+"F"+String(millis()-recordBarTime);
-        myFile.println(newline);
-        myFile.flush();
-      }
-    }
+//     for(int i=0; i<7; i++){
+//       if(noteActionStates[i] == 1){
+//         String newline=String(i)+"O"+String(millis()-recordBarTime);
+//         myFile.println(newline);
+//         myFile.flush();
+//       }else if (noteActionStates[i] == 3){
+//         String newline=String(i)+"F"+String(millis()-recordBarTime);
+//         myFile.println(newline);
+//         myFile.flush();
+//       }
+//     }
 
-  }else if(noteActionStates[7]==3){ //finish recording
-    myFile.close();
-    nextBarTime=lastBarTime+barInterval;
-    myFile= SD.open("MIDI.txt");
-    Serial.println("file opened for reading");
-  }else if(noteActionStates[7]==0){ //reading file
-    if(myFile){ //if there is a file
-      if(myFile.available()){  //if we havn't finished reading it
-        char thisline[10];
-        char thisbyte;
-        int8_t i=0;
-        do{
-          thisbyte=myFile.read();
-          thisline[i] = thisbyte;
-          i++;
-        }while('\r' != thisbyte);
-        Serial.print(thisline);
-        Serial.println("reading to "+myFile.position());
-      }
-      else if(){ //if we have finished reading it . NEEDS REWRITE
-        noteActionStates[7]=3;
-        Serial.println("reading to the end, reset to state 3");
-      }
-    }
-    //if the file is not yet created, do nothing.
-  }
+//   }else if(noteActionStates[7]==3){ //finish recording
+//     myFile.close();
+//     nextBarTime=lastBarTime+barInterval;
+//     myFile= SD.open("MIDI.txt");
+//     Serial.println("file opened for reading");
+//   }else if(noteActionStates[7]==0){ //reading file
+//     if(myFile){ //if there is a file
+//       if(myFile.available()){  //if we havn't finished reading it
+//         char thisline[10];
+//         char thisbyte;
+//         int8_t i=0;
+//         do{
+//           thisbyte=myFile.read();
+//           thisline[i] = thisbyte;
+//           i++;
+//         }while('\r' != thisbyte);
+//         Serial.print(thisline);
+//         Serial.println("reading to "+myFile.position());
+//       }
+//       else if(){ //if we have finished reading it . NEEDS REWRITE
+//         noteActionStates[7]=3;
+//         Serial.println("reading to the end, reset to state 3");
+//       }
+//     }
+//     //if the file is not yet created, do nothing.
+//   }
 
-}
+// }
 
 void writeOutputs(){
-  for(int i=0; i<7; i++){
+  for(int i=0; i<7; i++){//capa
     if(noteActionStates[i]==1){//notes,
       midiNoteOn(0, noteMapping[i], 127);  
     }else if(noteActionStates[i]==3){
       midiNoteOff(0, noteMapping[i], 127);
     }
   }
-
-  if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
-    lastBarTime=millis();
-    midiNoteOn(9, 36, 127);
+  for(int i=12; i<16; i++){//glove
+    if(noteActionStates[i]==1){//notes,
+      Serial.println("golve");
+      midiNoteOn(9, noteMapping[i], 127);  
+    }else if(noteActionStates[i]==3){
+      midiNoteOff(9, noteMapping[i], 127);
+    }
   }
+
+
+
+// if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
+//    lastBarTime=millis();
+//    midiNoteOn(9, 36, 127); 
+//  }
 
 }
 
