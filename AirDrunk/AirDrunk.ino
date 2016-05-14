@@ -1,7 +1,7 @@
 /*
 AirBeats Project Code for Arduino Uno
 
-V 0.4.3
+V 0.4.5
 
 Last edit: Yebai Zhao
 --------------------
@@ -56,8 +56,8 @@ int8_t noteActionStates[16];//tells what new action should be done, 0=not active
 File myFile;
 
 //Glove
-uint8_t glove_Analog[4];
-
+uint8_t glove_Analog[4]; //All four analog resistors readings
+uint8_t pressDelayCounter;
 //////////////////////////////////////////////////////////////////////SETUP
 void setup() {
 	Serial.begin(9600);
@@ -99,6 +99,9 @@ void loop() {
 	readTouchInputs();
   //fileIO();
   writeOutputs();
+  if(pressDelayCounter<254){
+    pressDelayCounter++;
+  }    
 }
 
 
@@ -114,7 +117,6 @@ void readTouchInputs(){ // Read input, write action array
   }else{
     touched&=0xfff;
   }
-
 
     byte glove =(readAnalog(3)<<3)|(readAnalog(2)<<2)|(readAnalog(1)<<1)|(readAnalog(0));
     touched=( (glove<<12) |touched);
@@ -157,12 +159,12 @@ void readTouchInputs(){ // Read input, write action array
 //       }
 //     }
 
-//   }else if(noteActionStates[7]==3){ //finish recording
+//   if(noteActionStates[6]==1){ //finish recording
 //     myFile.close();
 //     nextBarTime=lastBarTime+barInterval;
 //     myFile= SD.open("MIDI.txt");
 //     Serial.println("file opened for reading");
-//   }else if(noteActionStates[7]==0){ //reading file
+//   if(noteActionStates[6]==0){ //reading file
 //     if(myFile){ //if there is a file
 //       if(myFile.available()){  //if we haven't finished reading it
 //         char thisline[10];
@@ -186,21 +188,25 @@ void readTouchInputs(){ // Read input, write action array
 // }
 
 void writeOutputs(){
-  for(int i=0; i<7; i++){//capa
-    if(noteActionStates[i]==1){//notes,
+  for(int i=0; i<7; i++){//capacity
+    if(noteActionStates[i]==1){//notes just on
       midiNoteOn(0, noteMapping[i], 127);  
     }else if(noteActionStates[i]==3){
       midiNoteOff(0, noteMapping[i], 127);
     }
   }
   for(int i=12; i<16; i++){//glove
-    if(noteActionStates[i]==1){//notes just on
-      midiNoteOn(9, noteMapping[i], glove_Analog[i-12]);  
+    if( noteActionStates[i]==1){//notes just on
+      pressDelayCounter=0;
+    }else if(noteActionStates[i]==2 && pressDelayCounter==100){
+      midiNoteOn(9, noteMapping[i], glove_Analog[i-12]);
       Serial.println(glove_Analog[i-12]);
-    }else if(noteActionStates[i]==3){
-      midiNoteOff(9, noteMapping[i], 0);
     }
+//    else if(noteActionStates[i]==3){
+//      midiNoteOff(9, noteMapping[i], 0);
+//    }
   }
+
 // if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
 //    lastBarTime=millis();
 //    midiNoteOn(9, 36, 127); 
@@ -209,9 +215,10 @@ void writeOutputs(){
 
 boolean readAnalog(int pinN){ 
   uint8_t analogReading= analogRead(pinN);
-  if(analogReading<100){return false;}
-  else if (analogReading<950){
+  if(analogReading<100){return false;
+  }else if (analogReading<950){
     glove_Analog[pinN]=(analogReading-100)/14+64;
+    //Serial.println("reading is:" +glove_Analog[pinN]);
     return true;
   }else{
     glove_Analog[pinN]=127;
