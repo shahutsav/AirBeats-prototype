@@ -1,11 +1,11 @@
 /*
 AirBeats Project Code for Arduino Uno
 
-V 0.4.2
+V 0.4.3
 
 Last edit: Yebai Zhao
 --------------------
-Pin uesage list. 
+Pin usage list. 
 Even you don't see a wire coming out of a pin doesn't mean it is not used.
 [#] [USEAGE]
 D2  Serial to 1053
@@ -41,27 +41,29 @@ int8_t midiInstr=26;// electric guitar
 
 //Basic pace settings
 #define BPM 60 //Beats per minute, should be 120/60/40/30... etc
-uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note. In milisecond
+uint16_t minTimeInterval=7500/BPM; //The fastest note we can make is eighth note. In millisecond
 uint16_t barInterval= 4*(2*minTimeInterval); //in a 4/4 beat, this is the time for a bar
 unsigned long lastBarTime;
 unsigned long recordBarTime;
-
 unsigned long nextBarTime;
 
 //MPR121 sensor settings
 #define irqpin 3  //Pin Digital 3 is used for MPR121 interrupt
 int8_t noteMapping[16]={60,62,64,65,67,69,71,72,74,76,77,79,40,46,48,56};
-uint16_t touched;
+uint16_t touched;// The state of all input in this cycle 0000 0000 0000 0000
 int8_t noteActionStates[16];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
 //SD card
 File myFile;
 
+//Glove
+uint8_t glove_Analog[4];
+
 //////////////////////////////////////////////////////////////////////SETUP
 void setup() {
 	Serial.begin(9600);
-	Serial.println("VS1053+MPR121 AirBeats v0.2");
+	Serial.println("VS1053+MPR121 AirBeats v0.4");
 
-  if (!SD.begin(CARDCS)) { //if there is no sd card
+  if (!SD.begin(CARDCS)) { //if there is no SD card
     Serial.println(("SD failed, or not present"));
     while (1);  // don't do anything more
   }else if (SD.exists("MIDI.txt")){
@@ -71,15 +73,15 @@ void setup() {
   myFile.close();
 
 	pinMode(irqpin, INPUT);//enable Pin:3 for MPR121
-	digitalWrite(irqpin, HIGH); //enable pullup resistor
+	digitalWrite(irqpin, HIGH); //enable pull-up resistor
   Wire.begin();
   mpr121_setup();//a function down below to set default values for MPR121
   
-  ////////////////////glove
-  pinMode(8, INPUT);
-  pinMode(9, INPUT);
-  pinMode(10, INPUT);
-  pinMode(11, INPUT);
+  ////////////////////Glove input pin setting 
+  pinMode(A0, INPUT);
+  pinMode(A1, INPUT);
+  pinMode(A2, INPUT);
+  pinMode(A3, INPUT);
 
   ///////////////////
 
@@ -101,34 +103,34 @@ void loop() {
 
 
 ////////////////////////////////////////////////////////////////////FUNCTIONS
-void readTouchInputs(){ // Read input, write action arry
+void readTouchInputs(){ // Read input, write action array
   
   if(!checkInterrupt()){
     Wire.requestFrom(0x5A,2); //read the touch state from the MPR121
     
     byte LSB = Wire.read(); //0000 0000
     byte MSB = Wire.read(); //0000 0000
-    touched = ((MSB << 8) | LSB); //16bits that make up the touch states 
+    touched = ((MSB << 8) | LSB); //16 bits that make up the touch states 
+  }else{
+    touched&=0xfff;
   }
 
-    byte glove =(digitalRead(11)<<3)|(digitalRead(10)<<2)|(digitalRead(9)<<1)|(digitalRead(8));
+
+    byte glove =(readAnalog(3)<<3)|(readAnalog(2)<<2)|(readAnalog(1)<<1)|(readAnalog(0));
     touched=( (glove<<12) |touched);
 
-
-
-    
   for (int i=0; i < 16; i++){  // Check what electrodes were pressed
 
-    if(touched & (1<<i)){
-      if(noteActionStates[i] == 0){
-        noteActionStates[i] = 1;
-      }else if(noteActionStates[i] == 1){
-        noteActionStates[i] = 2;
+    if(touched & (1<<i)){ //if that bit is 1
+      if(noteActionStates[i] == 0){// if that bit was 0
+        noteActionStates[i] = 1;//make it 1
+      }else if(noteActionStates[i] == 1){//if that bit was 1 too
+        noteActionStates[i] = 2;//make it 2
       }
     }
-    else{
-      if(noteActionStates[i] == 2){
-        noteActionStates[i] = 3;
+    else{//if that bit is 0
+      if(noteActionStates[i] == 2){//if that bit was 2
+        noteActionStates[i] = 3;//make it 3
       }else if(noteActionStates[i] == 3){
         noteActionStates[i] = 0;
       }
@@ -162,7 +164,7 @@ void readTouchInputs(){ // Read input, write action arry
 //     Serial.println("file opened for reading");
 //   }else if(noteActionStates[7]==0){ //reading file
 //     if(myFile){ //if there is a file
-//       if(myFile.available()){  //if we havn't finished reading it
+//       if(myFile.available()){  //if we haven't finished reading it
 //         char thisline[10];
 //         char thisbyte;
 //         int8_t i=0;
@@ -181,7 +183,6 @@ void readTouchInputs(){ // Read input, write action arry
 //     }
 //     //if the file is not yet created, do nothing.
 //   }
-
 // }
 
 void writeOutputs(){
@@ -193,21 +194,29 @@ void writeOutputs(){
     }
   }
   for(int i=12; i<16; i++){//glove
-    if(noteActionStates[i]==1){//notes,
-      Serial.println("golve");
-      midiNoteOn(9, noteMapping[i], 127);  
+    if(noteActionStates[i]==1){//notes just on
+      midiNoteOn(9, noteMapping[i], glove_Analog[i-12]);  
+      Serial.println(glove_Analog[i-12]);
     }else if(noteActionStates[i]==3){
-      midiNoteOff(9, noteMapping[i], 127);
+      midiNoteOff(9, noteMapping[i], 0);
     }
   }
-
-
-
 // if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
 //    lastBarTime=millis();
 //    midiNoteOn(9, 36, 127); 
 //  }
+}
 
+boolean readAnalog(int pinN){ 
+  uint8_t analogReading= analogRead(pinN);
+  if(analogReading<100){return false;}
+  else if (analogReading<950){
+    glove_Analog[pinN]=(analogReading-100)/14+64;
+    return true;
+  }else{
+    glove_Analog[pinN]=127;
+    return true;
+  }
 }
 
 void midiSetInstrument(uint8_t chan, uint8_t inst) {
