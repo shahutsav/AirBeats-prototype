@@ -1,4 +1,4 @@
-#include <MIDI.h>
+
 
 // FRAME MIDI (cccc = channel):
  
@@ -9,7 +9,6 @@
 // | 1011 cccc = control change => 176 (10) | 0xxx xxxx: numero | 0xxx xxxx: value |
 // ------------------------------------------------ --------------------------------------------------
 // ========================
-MIDI_CREATE_DEFAULT_INSTANCE();
 
 int  valuePinZero = 0;
 int  valuePinZero2 = 0;
@@ -24,36 +23,34 @@ int  valuePinTwo2 = 0; */
  
 void  setup ()
 {
-Serial.begin (57600); // communication speed
+Serial.begin (9600); // communication speed
 }
  
 void  loop ()
 {
 // Controller ZERO
 // --------
-valuePinZero = analogRead (0); //read the fsr value
-int val = map(valuePinZero, 0, 1023, 0, 255);
-if  (val > 0) { // if the value varies by more than 2 between reads ...
-valuePinZero2 = val; //...on updates
-Serial.println(val); 
-MIDI_TX (176, 65, val); // and send message type (CHANNEL CONTROLLER 0, NUMBER 75 VALUE = read value) ==> see table
+valuePinZero = analogRead (0) /8; 
+if  (valuePinZero != valuePinZero2 ) { // if the value varies by more than 2 between reads ...
+MIDI_TX (176, 65, valuePinZero); // and send message type (CHANNEL CONTROLLER 0, NUMBER 75 VALUE = read value) ==> see table
  // Delay (100); // For debugging
 }
+valuePinZero2 = valuePinZero; //...on updates
+
+
 
  
 // Controller ONE
 // --------
-valuePinOne = analogRead (1) ;
-int valOne = map(valuePinOne, 0, 1023, 0, 255);
-if  (valOne > 0)
+valuePinOne = analogRead (1) /8 ;
+if (valuePinOne != valuePinOne2)
 {
  
-valuePinOne2 = valOne;
- 
-MIDI_TX (176, 67, valOne);
+MIDI_TX (176, 67, valuePinOne);
  // Delay (100);
 }
- Serial.println(valOne);
+ valuePinOne2 = valuePinOne;
+
 
 // TWO Controller
 // --------
