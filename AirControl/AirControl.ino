@@ -48,7 +48,7 @@ unsigned long recordBarTime;
 unsigned long nextBarTime;
 
 //General IO
-int8_t noteMapping[16]={60,62,64,65,67,69,71,72,74,76,77,79,40,46,48,56};
+int8_t noteMapping[16]={60,62,64,65, 67,69,71,72, 74,76,77,79, 40,35,48,56};
 int8_t noteActionStates[16];//tells what new action should be done, 0=not active, 1=note on, 2=active, 3=note off
 
 //MPR121 sensor settings
@@ -93,13 +93,12 @@ void setup() {
   midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
   midiSetInstrument(0, midiInstr);// 0x C0 01
   midiSetChannelVolume(0, 127);//0x B0 07 3F
-
   midiSetChannelBank(9, VS1053_BANK_DRUMS2);// channel 9 is using drum2 bank
   midiSetChannelVolume(9,127);
 }
 ///////////////////////////////////////////////////////////////////////LOOP
 void loop() { 
-  //unsigned long currentTime = millis();
+  unsigned long currentTime = millis();
 	readTouchInputs();
   //fileIO();
   writeOutputs(); 
@@ -136,6 +135,8 @@ void readTouchInputs(){ // Read input, write action array
         noteActionStates[i] = 3;//make it 3
       }else if(noteActionStates[i] == 3){
         noteActionStates[i] = 0;
+      }else if(noteActionStates[i] == 1){
+        noteActionStates[i] = 0;//////////////////////////
       }
     }
   }
@@ -189,15 +190,56 @@ void readTouchInputs(){ // Read input, write action array
 // }
 
 void writeOutputs(){
-  for(int i=0; i<6; i++){//capacity
-    if(noteActionStates[i]==1){//notes just on
-      midiNoteOn(0, noteMapping[i], 127);  
-    }else if(noteActionStates[i]==3){
-      midiNoteOff(0, noteMapping[i], 127);
+  if(noteActionStates[0]==2){ //if you press the pad 1
+
+    for(int i=2; i<6; i++){
+      if(noteActionStates[i]==1){
+        if(noteMapping[i+10]!=87){
+        noteMapping[i+10]=noteMapping[i+10]+1; 
+        midiNoteOn(9, noteMapping[i+10],127);
+        }else {
+          noteMapping[i+10]=27;
+          midiNoteOn(9, noteMapping[i+10],127);
+        }
+      }
     }
   }
+  if(noteActionStates[1]==2){ //if you press the pad 1
+
+    for(int i=2; i<6; i++){
+      if(noteActionStates[i]==1){
+        if(noteMapping[i+10]!=27){
+        noteMapping[i+10]=noteMapping[i+10]-1; 
+        midiNoteOn(9, noteMapping[i+10],127);
+        }else {
+          noteMapping[i+10]=87;
+          midiNoteOn(9, noteMapping[i+10],127);
+        }
+      }
+    }
+  }
+
+
+  if(noteActionStates[6]==1){ //press capacity pad 7 to mute all
+    if(muteChannels==false){
+      midiSetChannelVolume(0,0);
+      midiSetChannelVolume(9,0);
+      muteChannels=true;
+    }else if(muteChannels==true){
+      midiSetChannelVolume(0,127);
+      midiSetChannelVolume(9,127);
+      muteChannels=false;
+    }
+
+  }
+
   for(int i=12; i<16; i++){//glove
     if(noteActionStates[i]==1){
+      Serial.print(noteActionStates[12]);
+      Serial.print(noteActionStates[13]);
+      Serial.print(noteActionStates[14]);
+      Serial.print(noteActionStates[15]);
+      Serial.println();
       midiNoteOn(9, noteMapping[i],127);
     }
 
@@ -207,23 +249,23 @@ void writeOutputs(){
     //   midiNoteOn(9, noteMapping[i], glove_Analog[i-12]);
     //   Serial.println(glove_Analog[i-12]);
     // }
-//    else if(noteActionStates[i]==3){
-//      midiNoteOff(9, noteMapping[i], 0);
-//    }
+   else if(noteActionStates[i]==3){
+     midiNoteOff(9, noteMapping[i], 0);
+   }
   }
 
-// if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
-//    lastBarTime=millis();
-//    midiNoteOn(9, 36, 127); 
-//  }
+if(millis() % barInterval == 0){ //beats, play the bass dumm 36, in a vel of 127
+   lastBarTime=millis();
+   midiNoteOn(9, 46, 127); 
+ }
 }
 
 boolean readAnalog(int pinN){ 
   uint8_t analogReading= analogRead(pinN);
-  if(analogReading<100){return false;
+  if(analogReading<200){
+    return false;
   }else if (analogReading<950){
     glove_Analog[pinN]=(analogReading-100)/14+64;
-    //Serial.println("reading is:" +glove_Analog[pinN]);
     return true;
   }else{
     glove_Analog[pinN]=127;
