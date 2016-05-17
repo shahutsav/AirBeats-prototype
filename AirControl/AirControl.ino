@@ -1,7 +1,7 @@
 /*
 AirBeats Project Code for Arduino Uno
 
-V 0.4.5
+V 0.4.6
 
 Last edit: Yebai Zhao
 --------------------
@@ -93,7 +93,6 @@ void setup() {
   midiSetChannelBank(0, VS1053_BANK_MELODY);//0x B0 00 79, channel 0 is using melody bank
   midiSetInstrument(0, midiInstr);// 0x C0 01
   midiSetChannelVolume(0, 127);//0x B0 07 3F
-
   midiSetChannelBank(9, VS1053_BANK_DRUMS2);// channel 9 is using drum2 bank
   midiSetChannelVolume(9,127);
 }
@@ -136,6 +135,8 @@ void readTouchInputs(){ // Read input, write action array
         noteActionStates[i] = 3;//make it 3
       }else if(noteActionStates[i] == 3){
         noteActionStates[i] = 0;
+      }else if(noteActionStates[i] == 1){
+        noteActionStates[i] = 0;//////////////////////////
       }
     }
   }
@@ -234,7 +235,11 @@ void writeOutputs(){
 
   for(int i=12; i<16; i++){//glove
     if(noteActionStates[i]==1){
-      Serial.println(touched);
+      Serial.print(noteActionStates[12]);
+      Serial.print(noteActionStates[13]);
+      Serial.print(noteActionStates[14]);
+      Serial.print(noteActionStates[15]);
+      Serial.println();
       midiNoteOn(9, noteMapping[i],127);
     }
 
